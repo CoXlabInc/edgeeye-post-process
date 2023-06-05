@@ -1,0 +1,24 @@
+{
+  "name": "iot.own-image-to-rtsp-streamer",
+  "version": "0.0.1",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@bitbucket.org/coxlab/iot.own-image-to-rtsp-streamer.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://bitbucket.org/coxlab/iot.own-image-to-rtsp-streamer/issues"
+  },
+  "homepage": "https://bitbucket.org/coxlab/iot.own-image-to-rtsp-streamer#readme",
+  "dependencies": {
+    "commander": "^10.0.1",
+    "pubsub-js": "^1.9.4"
+  }
+}

@@ -1,48 +1,23 @@
 #!/usr/bin/env node
 
-var fs = require("fs"),
-    os = require('os'),
-    path = require('path'),
+var os = require('os'),
     http = require("http"),
-    util = require("util"),
-    chokidar = require('chokidar'),
     PubSub = require("pubsub-js"),
-    localIp = require('ip'),
-    PiCamera = require('./camera.js'),
     program = require('commander'),
     pjson = require('./package.json');
 
 program
-  .version(pjson.version)
-  .description(pjson.description)
-  .option('-p --port <n>', 'port number (default 8080)', parseInt)
-  .option('-w --width <n>', 'image width (default 640)', parseInt)
-  .option('-l --height <n>', 'image height (default 480)', parseInt)
-  .option('-q --quality <n>', 'jpeg image quality from 0 to 100 (default 85)', parseInt)
-  .option('-s --sharpness <n>', 'Set image sharpness (-100 - 100)', parseInt)
-  .option('-c --contrast <n>', 'Set image contrast (-100 - 100)', parseInt)
-  .option('-b --brightness <n>', 'Set image brightness (0 - 100) 0 is black, 100 is white', parseInt)
-  .option('-s --saturation <n>', 'Set image saturation (-100 - 100)', parseInt)
-  .option('-t --timeout <n>', 'timeout in milliseconds between frames (default 500)', parseInt)
-  .option('-v --version', 'show version')
-  .parse(process.argv);
+    .version(pjson.version)
+    .description(pjson.description)
+    .option('-p --port <n>', 'port number (default 8080)', parseInt)
+    .option('-v --version', 'show version')
+    .parse(process.argv);
 
 program.on('--help', function(){
-  console.log("Usage: " + pjson.name + " [OPTION]\n");
+    console.log("Usage: " + pjson.name + " [OPTION]\n");
 });
 
 var port = program.port || 8080,
-    width = program.width || 640,
-    height = program.height || 480,
-    timeout = program.timeout || 250,
-    quality = program.quality || 75,
-    sharpness = program.sharpness || 0,
-    contrast = program.contrast || 0,
-    brightness = program.brightness || 50,
-    saturation = program.saturation || 0,
-    tmpFolder = os.tmpdir(),
-    tmpImage = pjson.name + '-image.jpg',
-    localIpAddress = localIp.address(),
     boundaryID = "BOUNDARY";
 
 /**
@@ -121,49 +96,20 @@ server.on('error', function(e) {
 // start the server
 server.listen(port);
 console.log(pjson.name + " started on port " + port);
-console.log('Visit http://' + localIpAddress + ':' + port + ' to view your PI camera stream');
 console.log('');
 
 
-var tmpFile = path.resolve(path.join(tmpFolder, tmpImage));
-
-// start watching the temp image for changes
-var watcher = chokidar.watch(tmpFile, {
-  persistent: true,
-  usePolling: true,
-  interval: 10,
-});
-
 // hook file change events and send the modified image to the browser
-watcher.on('change', function(file) {
+// watcher.on('change', function(file) {
 
-    //console.log('change >>> ', file);
+//     //console.log('change >>> ', file);
 
-    fs.readFile(file, function(err, imageData) {
-        if (!err) {
-            PubSub.publish('MJPEG', imageData);
-        }
-        else {
-            console.log(err);
-        }
-    });
-});
-
-// setup the camera 
-var camera = new PiCamera();
-
-// start image capture
-camera
-    .nopreview()
-    .baseFolder(tmpFolder)
-    .thumb('0:0:0') // dont include thumbnail version
-    .timeout(9999999) // never end
-    .timelapse(timeout) // how often we should capture an image
-    .width(width)
-    .height(height)
-    .quality(quality)
-    .sharpness(sharpness)
-    .contrast(contrast)
-    .brightness(brightness)
-    .saturation(saturation)
-    .takePicture(tmpImage);
+//     fs.readFile(file, function(err, imageData) {
+//         if (!err) {
+//             PubSub.publish('MJPEG', imageData);
+//         }
+//         else {
+//             console.log(err);
+//         }
+//     });
+// });
