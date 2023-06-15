@@ -40,18 +40,29 @@ try {
     process.exit(1);
 }
 
-const subscriber = redisClient.duplicate();
-subscriber.on('error', (err) => {
-    console.error(err);
-});
-try {
-    await subscriber.connect();
-} catch(e) {
-    console.error(e);
-    sys.exit(1);
-}
+async function sendAnImage(res, bufferKey, lastOffset) {
+    if (res.writableEnded) {
+        return;
+    }
+    
+    let bufferLength = await redisClient.STRLEN(bufferKey);
+    if (bufferLength > 0) {
+        res.write('Content-Type: image/jpeg\r\n');
+        res.write('Content-Length: ' + bufferLength + '\r\n');
+        res.write("\r\n");
 
-var resp_subs_map = {};
+        let data = await redisClient.GET(redis.commandOptions({
+            returnBuffers: true
+        }), bufferKey);
+        res.write(data, 'binary');
+        console.log(`Load and write data ${data.length}`);
+        res.write("\r\n");
+        res.write('--' + boundaryID + '\r\n');
+        console.log('End of streaming');
+    }
+
+    setTimeout(sendAnImage, (lastOffset === bufferLength) ? 1000 : 100, res, bufferKey, bufferLength);
+};
 
 /**
  * create a server to serve out the motion jpeg images
@@ -65,8 +76,7 @@ var server = http.createServer(async (req, res) => {
         res.write('<html>');
         res.write('<head><title>' + pjson.name + '</title><meta charset="utf-8" /></head>');
         res.write('<body>');
-        res.write('<video src="/LWAC1F09FFFE09112A/image" />');
-        // res.write('<img src="/LWAC1F09FFFE09112A/image" />');
+        res.write('<img src="/LWAC1F09FFFE09112A/image" />');
         res.write('</body>');
         res.write('</html>');
         res.end();
@@ -83,74 +93,17 @@ var server = http.createServer(async (req, res) => {
     let uri = req.url.split('/').slice(1);
 
     if (uri.length == 2) {
-        const statusKey = `ImageToRtsp:${uri[0]}:${uri[1]}:status`;
-        const bufferKey = `ImageToRtsp:${uri[0]}:${uri[1]}:buffer`;
+        const device = uri[0];
+        const key = uri[1];
+        const bufferKey = `ImageToRtsp:${device}:${key}:buffer`;
         
-        console.log(`Subscribing ${statusKey}c`);
-        await subscriber.subscribe(statusKey + 'c', async (message, channel) => {
-            let status;
-
-            try {
-                status = JSON.parse(message);
-            } catch(e) {
-                console.error(`Cannot parse status: ${e}`);
-                return;
-            }
-
-            if (typeof status === 'object' && status.hasOwnProperty('size') && status.hasOwnProperty('offset')) {
-                if (status.offset == 0) {
-                    console.log('Starting streaming...');
-                    // res.write('--' + boundaryID + '\r\n');
-                    res.write('Content-Type: image/jpeg\r\n');
-                    res.write('Content-Length: ' + status.size + '\r\n');
-                    res.write("\r\n");
-                }
-
-                let bufferLength = await redisClient.STRLEN(bufferKey);
-                if (bufferLength == status.size) {
-                    res.write("\r\n");
-                    res.write('--' + boundaryID + '\r\n');
-                    console.log('End of streaming'); 
-                    // res.end();
-               } else {
-                    console.log(`Streaming... [ ${bufferLength} / ${status.size} ] (${bufferLength / status.size * 100})`);
-                }
-
-            } else {
-                console.error(`Invalid status: ${e}`);
-            }
-        }, true /* buffer mode */);
-        
-        if (resp_subs_map.hasOwnProperty(statusKey)) {
-            if (!resp_subs_map[statusKey].includes(res)) {
-                resp_subs_map[statusKey].push(res);
-            }
+        let bufferLength = await redisClient.STRLEN(bufferKey);
+        if (bufferLength == 0) {
+            res.statusCode = 404;
+            res.write('No image streaming found');
+            res.end();
+            return;
         } else {
-            resp_subs_map[statusKey] = [ res ];
-        }
-
-        console.log(`Subscribing ${bufferKey}c`);
-        await subscriber.subscribe(bufferKey + 'c', (data, channel) => {
-            res.write(data, 'binary');
-            
-            console.log(`Write published data (${data.length} byte) to res ${res.writableEnded}`);
-        }, true /* buffer mode */);
-
-        if (resp_subs_map.hasOwnProperty(bufferKey)) {
-            if (!resp_subs_map[bufferKey].includes(res)) {
-                resp_subs_map[bufferKey].push(res);
-            }
-        } else {
-            resp_subs_map[bufferKey] = [ res ];
-        }
-
-        let status;
-        try {
-            status = JSON.parse(await redisClient.GET(statusKey));
-        } catch(e) {
-            console.error(`Cannot parse status: ${e}`);
-        }
-        if (typeof status === 'object' && status.hasOwnProperty('size')) {
             res.writeHead(200, {
                 'Content-Type': 'multipart/x-mixed-replace;boundary="' + boundaryID + '"',
                 'Connection': 'keep-alive',
@@ -159,54 +112,12 @@ var server = http.createServer(async (req, res) => {
                 'Pragma': 'no-cache'
             });
             console.log('writing header');
-            
-            res.write('--' + boundaryID + '\r\n')
-            // res.setHeader('Content-Type', 'image/jpeg');
-            // res.setHeader('Content-Length', status.size);
-            res.write('Content-Type: image/jpeg\r\n');
-            res.write('Content-Length: ' + status.size + '\r\n');
-            res.write("\r\n");
-            console.log('writing boundary');
 
-            let data = await redisClient.GET(redis.commandOptions({
-                returnBuffers: true
-            }), bufferKey);
-            res.write(data, 'binary');
-            console.log(`Load and write data ${data.length}`);
-
-            let bufferLength = await redisClient.STRLEN(bufferKey);
-            if (bufferLength == status.size) {
-                res.write("\r\n");
-                res.write('--' + boundaryID + '\r\n')
-                console.log('End of streaming');
-                // res.end();
-            }
-        } else {
-            console.error(`Invalid status: ${status}`);
+            res.write('--' + boundaryID + '\r\n');
+            await sendAnImage(res, bufferKey);
         }
-        
+
         res.on('close', function() {
-            if (resp_subs_map.hasOwnProperty(statusKey) && resp_subs_map[statusKey].includes(res)) {
-                resp_subs_map[statusKey].splice(resp_subs_map[statusKey].indexOf(res), 1);
-
-                if (resp_subs_map[statusKey].length == 0) {
-                    delete resp_subs_map.statusKey;
-                    subscriber.unsubscribe(statusKey);
-                }
-            }
-
-            if (resp_subs_map.hasOwnProperty(bufferKey) && resp_subs_map[bufferKey].includes(res)) {
-                resp_subs_map[bufferKey].splice(resp_subs_map[bufferKey].indexOf(res), 1);
-
-                if (resp_subs_map[bufferKey].length == 0) {
-                    delete resp_subs_map.bufferKey;
-                    subscriber.unsubscribe(bufferKey);
-                }
-            }
-
-            console.log(`Connection closed! (# of subs ${statusKey}:${resp_subs_map[statusKey].length}, ${bufferKey}:${resp_subs_map[bufferKey].length}`);
-
-
             res.end();
         });
     } else {
@@ -230,18 +141,3 @@ server.on('error', function(e) {
 // start the server
 server.listen(port);
 console.log(pjson.name + " started on port " + port);
-
-// hook file change events and send the modified image to the browser
-// watcher.on('change', function(file) {
-
-//     //console.log('change >>> ', file);
-
-//     fs.readFile(file, function(err, imageData) {
-//         if (!err) {
-//             PubSub.publish('MJPEG', imageData);
-//         }
-//         else {
-//             console.log(err);
-//         }
-//     });
-// });
