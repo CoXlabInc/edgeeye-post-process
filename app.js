@@ -48,17 +48,33 @@ async function sendAnImage(res, bufferKey, lastOffset) {
     let bufferLength = await redisClient.STRLEN(bufferKey);
     if (bufferLength > 0) {
         res.write('Content-Type: image/jpeg\r\n');
-        res.write('Content-Length: ' + bufferLength + '\r\n');
-        res.write("\r\n");
 
-        let data = await redisClient.GET(redis.commandOptions({
-            returnBuffers: true
-        }), bufferKey);
-        res.write(data, 'binary');
-        console.log(`Load and write data ${data.length}`);
-        res.write("\r\n");
-        res.write('--' + boundaryID + '\r\n');
-        console.log('End of streaming');
+        if (bufferLength <= 1500) {
+            let bufferLast = await redisClient.GET(redis.commandOptions({
+                returnBuffers: true
+            }), bufferKey + ':last');
+            res.write(`Content-Length: ${bufferLast.length}\r\n\r\n`);
+            res.write(bufferLast, 'binary');
+            console.log(`Too small (${bufferLength}). Keep last buffer ${bufferLast.length}`);
+            res.write('\r\n--' + boundaryID + '\r\n');
+        } else {
+            res.write(`Content-Length: ${bufferLength}\r\n\r\n`);
+            let data = await redisClient.GET(redis.commandOptions({
+                returnBuffers: true
+            }), bufferKey);
+            if (bufferLength == data.length) {
+                res.write(data, 'binary');
+            } else {
+                res.write(data.subarray(0, bufferLength), 'binary');
+            }
+            console.log(`Load and write data ${data.length}`);
+            res.write('\r\n--' + boundaryID + '\r\n');
+
+            if (bufferLength != data.length) {
+                sendAnImage(res, bufferKey, bufferLength);
+                return;
+            }
+        }
     }
 
     setTimeout(sendAnImage, (lastOffset === bufferLength) ? 1000 : 100, res, bufferKey, bufferLength);

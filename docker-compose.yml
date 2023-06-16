@@ -11,8 +11,6 @@ services:
       driver: "local"
     networks:
       - iotown_default
-    ports:
-      - 8080:8080
     command: npm start -- -r ${REDIS_URL:-'redis://redis'}
 
   mediamtx:
