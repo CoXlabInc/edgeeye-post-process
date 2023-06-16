@@ -3,16 +3,16 @@
 # General parameters
 
 # Sets the verbosity of the program; available values are "error", "warn", "info", "debug".
-logLevel: info
+logLevel: debug
 # Destinations of log messages; available values are "stdout", "file" and "syslog".
 logDestinations: [stdout]
 # If "file" is in logDestinations, this is the file which will receive the logs.
 logFile: mediamtx.log
 
 # Timeout of read operations.
-readTimeout: 10s
+readTimeout: 600s
 # Timeout of write operations.
-writeTimeout: 10s
+writeTimeout: 600s
 # Number of read buffers.
 # A higher value allows a wider throughput, a lower value allows to save RAM.
 readBufferCount: 512
@@ -461,3 +461,7 @@ paths:
     runOnRead:
     # Restart the command if it exits.
     runOnReadRestart: no
+  ~^(LW[A-Fa-f0-9]{16})\/([A-Za-z0-9]\w*):
+    runOnDemand: ffmpeg -re -i http://iotown_image_streamer:8080/$G1/$G2 -f rtsp rtsp://localhost:$RTSP_PORT/$G1/$G2
+    runOnDemandRestart: yes
+    runOnDemandStartTimeout: 600s
