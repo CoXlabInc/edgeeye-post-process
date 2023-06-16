@@ -1,9 +1,14 @@
 FROM aler9/rtsp-simple-server AS rtsp
-FROM node:20-alpine
+FROM node:18-alpine
 
 RUN apk add --no-cache ffmpeg
 
-COPY --from=rtsp /mediamtx /
-COPY --from=rtsp /mediamtx.yml /
+WORKDIR /root/
 
-ENTRYPOINT [ "/mediamtx" ]
+COPY . .
+RUN npm install --only=production
+
+COPY --from=rtsp /mediamtx .
+COPY --from=rtsp /mediamtx.yml .
+
+CMD [ "/root/mediamtx" ]

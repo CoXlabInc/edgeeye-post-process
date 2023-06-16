@@ -1,0 +1,34 @@
+version: '3.5'
+
+services:
+  iotown_image_streamer:
+    image: iotown_image_streamer
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    logging:
+      driver: "local"
+    networks:
+      - iotown_default
+    command: npm start -- -r ${REDIS_URL:-'redis://redis'}
+
+  mediamtx:
+    image: iotown_image_streamer
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    logging:
+      driver: "local"
+    networks:
+      - iotown_default
+    volumes:
+      - ./config/mediamtx.yml:/root/mediamtx.yml
+    ports:
+      - 554:554
+      - 9997:9997
+
+networks:
+  iotown_default:
+    external: true
