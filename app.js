@@ -2,7 +2,7 @@
 
 import os from 'os';
 import http from 'http';
-import PubSub from 'pubsub-js';
+import sharp from 'sharp';
 
 import { Command } from 'commander';
 const program = new Command();
@@ -45,39 +45,35 @@ async function sendAnImage(res, bufferKey, lastOffset) {
         return;
     }
     
-    let bufferLength = await redisClient.STRLEN(bufferKey);
-    if (bufferLength > 0) {
+    let buffer = await redisClient.GET(redis.commandOptions({
+        returnBuffers: true
+    }), bufferKey);
+    
+    if (buffer.length > 0) {
         res.write('Content-Type: image/jpeg\r\n');
+	try {
+	    let out = await sharp(buffer, { failOn: 'none' }).toBuffer({ resolveWithObject: true });
+            console.log(out.info);
 
-        if (bufferLength <= 1500) {
+            res.write(`Content-Length: ${buffer.length}\r\n\r\n`);
+            res.write(buffer, 'binary');
+            console.log(`Load and write data ${buffer.length}`);
+            res.write('\r\n--' + boundaryID + '\r\n');
+	} catch(e) {
+	    console.error(e);
             let bufferLast = await redisClient.GET(redis.commandOptions({
                 returnBuffers: true
             }), bufferKey + ':last');
             res.write(`Content-Length: ${bufferLast.length}\r\n\r\n`);
             res.write(bufferLast, 'binary');
-            console.log(`Too small (${bufferLength}). Keep last buffer ${bufferLast.length}`);
+            console.log(`Too small (${buffer.length}). Keep last buffer ${bufferLast.length}`);
             res.write('\r\n--' + boundaryID + '\r\n');
-        } else {
-            res.write(`Content-Length: ${bufferLength}\r\n\r\n`);
-            let data = await redisClient.GET(redis.commandOptions({
-                returnBuffers: true
-            }), bufferKey);
-            if (bufferLength == data.length) {
-                res.write(data, 'binary');
-            } else {
-                res.write(data.subarray(0, bufferLength), 'binary');
-            }
-            console.log(`Load and write data ${data.length}`);
-            res.write('\r\n--' + boundaryID + '\r\n');
-
-            if (bufferLength != data.length) {
-                sendAnImage(res, bufferKey, bufferLength);
-                return;
-            }
-        }
+	}
     }
 
-    setTimeout(sendAnImage, (lastOffset === bufferLength) ? 1000 : 100, res, bufferKey, bufferLength);
+    setTimeout(sendAnImage,
+               (lastOffset === buffer.length) ? 1000 : 100,
+               res, bufferKey, buffer.length);
 };
 
 /**
