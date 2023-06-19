@@ -52,23 +52,24 @@ async function sendAnImage(res, bufferKey, lastOffset) {
     if (buffer.length > 0) {
         res.write('Content-Type: image/jpeg\r\n');
 	try {
-	    let out = await sharp(buffer, { failOn: 'none' }).toBuffer({ resolveWithObject: true });
-            console.log(out.info);
-
-            res.write(`Content-Length: ${buffer.length}\r\n\r\n`);
-            res.write(buffer, 'binary');
-            console.log(`Load and write data ${buffer.length}`);
-            res.write('\r\n--' + boundaryID + '\r\n');
+	    buffer = await sharp(buffer, { failOn: 'none' }).jpeg().toBuffer();
 	} catch(e) {
-	    console.error(e);
-            let bufferLast = await redisClient.GET(redis.commandOptions({
+            console.error(e);
+            buffer = await redisClient.GET(redis.commandOptions({
                 returnBuffers: true
             }), bufferKey + ':last');
-            res.write(`Content-Length: ${bufferLast.length}\r\n\r\n`);
-            res.write(bufferLast, 'binary');
-            console.log(`Too small (${buffer.length}). Keep last buffer ${bufferLast.length}`);
-            res.write('\r\n--' + boundaryID + '\r\n');
+
+            try {
+                buffer = await sharp(buffer, { failOn: 'none' }).jpeg().toBuffer();
+            } catch(e) {
+                console.error(e);
+            }
 	}
+
+        res.write(`Content-Length: ${buffer.length}\r\n\r\n`);
+        res.write(buffer, 'binary');
+        console.log(`Load and write data ${buffer.length}`);
+        res.write('\r\n--' + boundaryID + '\r\n');
     }
 
     setTimeout(sendAnImage,
